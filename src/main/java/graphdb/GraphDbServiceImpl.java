@@ -22,17 +22,17 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 public class GraphDbServiceImpl implements GraphDbService {
   // Table名
-  private static final String TABLE = "graph";
+  protected static final String TABLE = "graph";
 
   // ColumnFamily名
-  private static final byte[] COLUMN_FAMILY = Bytes.toBytes("g");
+  protected static final byte[] COLUMN_FAMILY = Bytes.toBytes("g");
 
   // Column名
-  private static final byte[] PROPERTY_COLUMN = Bytes.toBytes("p");
-  private static final byte[] UPDATE_TIMESTAMP_COLUMN = Bytes.toBytes("u");
-  private static final byte[] CREATE_TIMESTAMP_COLUMN = Bytes.toBytes("c");
+  protected static final byte[] PROPERTY_COLUMN = Bytes.toBytes("p");
+  protected static final byte[] UPDATE_TIMESTAMP_COLUMN = Bytes.toBytes("u");
+  protected static final byte[] CREATE_TIMESTAMP_COLUMN = Bytes.toBytes("c");
 
-  private final HTablePool hTablePool;
+  protected final HTablePool hTablePool;
 
   // コンストラクタ
   public GraphDbServiceImpl(Configuration conf) {
@@ -64,7 +64,7 @@ public class GraphDbServiceImpl implements GraphDbService {
       boolean success = table.checkAndPut(row, COLUMN_FAMILY, UPDATE_TIMESTAMP_COLUMN, null, put);
       if (!success) {
         // 既にノードが存在する場合
-	return;
+        return;
       }
     } finally {
       table.close();
@@ -312,7 +312,7 @@ public class GraphDbServiceImpl implements GraphDbService {
   }
 
   // 隣接リレーションシップの取得(最新順)
-  public List<Relationship> select(String nodeId, String type, Direction direction, int length) throws IOException {
+  @Override public List<Relationship> select(String nodeId, String type, Direction direction, int length) throws IOException {
     // startRow
     byte[] startRow = createNowOrderRelationshipIndexScanStartRow(nodeId, type, direction);
 
@@ -340,12 +340,12 @@ public class GraphDbServiceImpl implements GraphDbService {
 
         switch (direction) {
         case INCOMING:
-          relationship.setStartNodeId(extractNodeId(result.getRow())); // RowKeyからノードIDを取得
+          relationship.setStartNodeId(extractNodeIdFromNewOrderRelationshipIndexRow(result.getRow())); // RowKeyからノードIDを取得
           relationship.setEndNodeId(nodeId);
           break;
         case OUTGOING:
           relationship.setStartNodeId(nodeId);
-          relationship.setEndNodeId(extractNodeId(result.getRow())); // RowKeyからノードIDを取得
+          relationship.setEndNodeId(extractNodeIdFromNewOrderRelationshipIndexRow(result.getRow())); // RowKeyからノードIDを取得
           break;
         default:
           throw new AssertionError();
@@ -531,8 +531,19 @@ public class GraphDbServiceImpl implements GraphDbService {
     }
   }
 
+  // ノードのRowKeyの作成
+  private byte[] createNodeRow(String nodeId) {
+    byte[] nodeIdBytes = Bytes.toBytes(nodeId);
+    ByteBuffer buffer = ByteBuffer.allocate(4 + 1 + 4 + nodeIdBytes.length); // int型 + byte型 + int型 + nodeIdのバイト配列
+    buffer.putInt(nodeId.hashCode()) // hash
+          .put((byte) 0) // 0
+          .putInt(nodeIdBytes.length) // nodeIdのバイト数
+          .put(nodeIdBytes); // nodeIdのバイト配列
+    return buffer.array();
+  }
+
   // リレーションシップの最新順インデックスRowからノードIDを抽出する
-  private String extractNodeId(byte[] row) {
+  private String extractNodeIdFromNewOrderRelationshipIndexRow(byte[] row) {
     ByteBuffer buffer = ByteBuffer.wrap(row);
 
     byte[] bytes;
@@ -560,7 +571,7 @@ public class GraphDbServiceImpl implements GraphDbService {
   }
 
   // バイト配列をインクリメントする
-  private byte[] incrementBytes(byte[] bytes) {
+  protected byte[] incrementBytes(byte[] bytes) {
     for (int i = 0; i < bytes.length; i++) {
       boolean increase = false;
 
@@ -579,7 +590,7 @@ public class GraphDbServiceImpl implements GraphDbService {
   }
 
   // リレーションシップの最新順インデックスのRowKeyの作成
-  private List<byte[]> createNewOrderRelationshipIndexRows(String startNodeId, String type, String endNodeId, long createTimestamp) {
+  protected List<byte[]> createNewOrderRelationshipIndexRows(String startNodeId, String type, String endNodeId, long createTimestamp) {
     byte[] startNodeIdBytes = Bytes.toBytes(startNodeId);
     byte[] typeBytes = Bytes.toBytes(type);
     byte[] endNodeIdBytes = Bytes.toBytes(endNodeId);
@@ -595,16 +606,16 @@ public class GraphDbServiceImpl implements GraphDbService {
         + 8 // long型
         + 4 + startNodeIdBytes.length // int型 + startNodeIdのバイト配列
     );
-    incomingBuffer.putInt(endNodeId.hashCode()); // hash
-    incomingBuffer.put((byte) 2); // 2
-    incomingBuffer.putInt(endNodeIdBytes.length); // endNodeIdのバイト数
-    incomingBuffer.put(endNodeIdBytes); // endNodeIdのバイト配列
-    incomingBuffer.put((byte) 1); // IMCOMING
-    incomingBuffer.putInt(typeBytes.length); // typeのバイト数
-    incomingBuffer.put(typeBytes); // typeのバイト配列
-    incomingBuffer.putLong(reverseTimestamp); // Long.MAX_VALUE - createTimestamp
-    incomingBuffer.putInt(startNodeIdBytes.length); // startNodeIdのバイト数
-    incomingBuffer.put(startNodeIdBytes); // startNodeIdのバイト配列
+    incomingBuffer.putInt(endNodeId.hashCode()) // hash
+                  .put((byte) 2) // 2
+                  .putInt(endNodeIdBytes.length) // endNodeIdのバイト数
+                  .put(endNodeIdBytes) // endNodeIdのバイト配列
+                  .put(getDirectionByte(Direction.INCOMING)) // IMCOMING
+                  .putInt(typeBytes.length) // typeのバイト数
+                  .put(typeBytes) // typeのバイト配列
+                  .putLong(reverseTimestamp) // Long.MAX_VALUE - createTimestamp
+                  .putInt(startNodeIdBytes.length) // startNodeIdのバイト数
+                  .put(startNodeIdBytes); // startNodeIdのバイト配列
 
     rows.add(incomingBuffer.array());
 
@@ -616,67 +627,44 @@ public class GraphDbServiceImpl implements GraphDbService {
         + 8 // long型
         + 4 + endNodeIdBytes.length // int型 + startNodeIdのバイト配列
     );
-    outgoingBuffer.putInt(startNodeId.hashCode()); // hash
-    outgoingBuffer.put((byte) 2); // 2
-    outgoingBuffer.putInt(startNodeIdBytes.length); // startNodeIdのバイト数
-    outgoingBuffer.put(startNodeIdBytes); // startNodeIdのバイト配列
-    outgoingBuffer.put((byte) 2); // OUTGOING
-    outgoingBuffer.putInt(typeBytes.length); // typeのバイト数
-    outgoingBuffer.put(typeBytes); // typeのバイト配列
-    outgoingBuffer.putLong(reverseTimestamp); // Long.MAX_VALUE - createTimestamp
-    outgoingBuffer.putInt(endNodeIdBytes.length); // endNodeIdのバイト数
-    outgoingBuffer.put(endNodeIdBytes); // endNodeIdのバイト配列
+    outgoingBuffer.putInt(startNodeId.hashCode()) // hash
+                  .put((byte) 2) // 2
+                  .putInt(startNodeIdBytes.length) // startNodeIdのバイト数
+                  .put(startNodeIdBytes) // startNodeIdのバイト配列
+                  .put(getDirectionByte(Direction.OUTGOING)) // OUTGOING
+                  .putInt(typeBytes.length) // typeのバイト数
+                  .put(typeBytes) // typeのバイト配列
+                  .putLong(reverseTimestamp) // Long.MAX_VALUE - createTimestamp
+                  .putInt(endNodeIdBytes.length) // endNodeIdのバイト数
+                  .put(endNodeIdBytes); // endNodeIdのバイト配列
 
     rows.add(outgoingBuffer.array());
 
     return rows;
   }
 
-  // ノードのRowKeyの作成
-  private byte[] createNodeRow(String nodeId) {
-    byte[] nodeIdBytes = Bytes.toBytes(nodeId);
-    ByteBuffer buffer = ByteBuffer.allocate(4 + 1 + 4 + nodeIdBytes.length); // int型 + byte型 + int型 + nodeIdのバイト配列
-    buffer.putInt(nodeId.hashCode()); // hash
-    buffer.put((byte) 0); // 0
-    buffer.putInt(nodeIdBytes.length); // nodeIdのバイト数
-    buffer.put(nodeIdBytes); // nodeIdのバイト配列
-    return buffer.array();
-  }
-
   // リレーションシップの最新順インデックスRowをScanするためのstartRowを生成する。hash(nodeId)-2-nodeId-direction-type
-  private byte[] createNowOrderRelationshipIndexScanStartRow(String nodeId, String type, Direction direction) {
+  protected byte[] createNowOrderRelationshipIndexScanStartRow(String nodeId, String type, Direction direction) {
     byte[] nodeIdBytes = Bytes.toBytes(nodeId);
     byte[] typeBytes = Bytes.toBytes(type);
-
-    byte dir;
-    switch (direction) {
-    case INCOMING:
-      dir = (byte) 1;
-      break;
-    case OUTGOING:
-      dir = (byte) 2;
-      break;
-    default:
-      throw new AssertionError();
-    }
 
     ByteBuffer buffer = ByteBuffer.allocate(4 + 1 // int型 + byte型
         + 4 + nodeIdBytes.length // int型 + nodeIdのバイト配列
         + 1 // byte型
         + 4 + typeBytes.length // int型 + typeのバイト配列
     );
-    buffer.putInt(nodeId.hashCode()); // hash
-    buffer.put((byte) 2); // 2
-    buffer.putInt(nodeIdBytes.length); // nodeIdのバイト数
-    buffer.put(nodeIdBytes); // nodeIdのバイト配列
-    buffer.put(dir); // direction
-    buffer.putInt(typeBytes.length); // typeのバイト数
-    buffer.put(typeBytes); // typeのバイト配列
+    buffer.putInt(nodeId.hashCode()) // hash
+          .put((byte) 2) // 2
+          .putInt(nodeIdBytes.length) // nodeIdのバイト数
+          .put(nodeIdBytes) // nodeIdのバイト配列
+          .put(getDirectionByte(direction)) // direction
+          .putInt(typeBytes.length) // typeのバイト数
+          .put(typeBytes); // typeのバイト配列
     return buffer.array();
   }
 
   // リレーションシップのRowKeyの作成
-  private byte[] createRelationshipRow(String startNodeId, String type, String endNodeId) {
+  protected byte[] createRelationshipRow(String startNodeId, String type, String endNodeId) {
     byte[] startNodeIdBytes = Bytes.toBytes(startNodeId);
     byte[] typeBytes = Bytes.toBytes(type);
     byte[] endNodeIdBytes = Bytes.toBytes(endNodeId);
@@ -686,19 +674,19 @@ public class GraphDbServiceImpl implements GraphDbService {
         + 4 + typeBytes.length // int型 + typeのバイト配列
         + 4 + endNodeIdBytes.length // int型 + endNodeIdのバイト配列
     );
-    buffer.putInt(startNodeId.hashCode()); // hash
-    buffer.put((byte) 1); // 1
-    buffer.putInt(startNodeIdBytes.length); // startNodeIdのバイト数
-    buffer.put(startNodeIdBytes); // startNodeIdのバイト配列
-    buffer.putInt(typeBytes.length); // typeのバイト数
-    buffer.put(typeBytes); // typeのバイト配列
-    buffer.putInt(endNodeIdBytes.length); // endNodeIdのバイト数
-    buffer.put(endNodeIdBytes); // endNodeIdのバイト配列
+    buffer.putInt(startNodeId.hashCode()) // hash
+          .put((byte) 1) // 1
+          .putInt(startNodeIdBytes.length) // startNodeIdのバイト数
+          .put(startNodeIdBytes) // startNodeIdのバイト配列
+          .putInt(typeBytes.length) // typeのバイト数
+          .put(typeBytes) // typeのバイト配列
+          .putInt(endNodeIdBytes.length) // endNodeIdのバイト数
+          .put(endNodeIdBytes); // endNodeIdのバイト配列
     return buffer.array();
   }
 
   // バイト配列からプロパティにデシリアライズする
-  private Map<String, String> deserializeProperty(byte[] bytes) {
+  protected Map<String, String> deserializeProperty(byte[] bytes) {
     if (bytes.length == 0) {
       return new HashMap<String, String>();
     }
@@ -721,8 +709,20 @@ public class GraphDbServiceImpl implements GraphDbService {
     return ret;
   }
 
+  // 方向のバイト表現を返す(INCOMINGは1,OUTGOINGは2)
+  protected byte getDirectionByte(Direction direction) {
+    switch (direction) {
+    case INCOMING:
+      return (byte) 1;
+    case OUTGOING:
+      return (byte) 2;
+    default:
+      throw new AssertionError();
+    }
+  }
+
   // プロパティをバイト配列にシリアライズする
-  private byte[] serializeProperty(Map<String, String> properties) {
+  protected byte[] serializeProperty(Map<String, String> properties) {
     if (properties.isEmpty()) {
       return HConstants.EMPTY_BYTE_ARRAY;
     }
