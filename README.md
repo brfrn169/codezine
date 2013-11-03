@@ -12,9 +12,18 @@
 * src/main/java/access/AccessCounterService.java
 * src/main/java/access/AccessCounterServiceImpl.java
 
-#### [第5回「HBaseを使ってグラフDBを作ってみよう(前編)](http://codezine.jp/article/detail/7373)
+#### [第5回「HBaseを使ってグラフDBを作ってみよう(前編)」](http://codezine.jp/article/detail/7373)
 
 * src/main/java/graphdb/Direction.java
 * src/main/java/graphdb/GraphDbService.java
 * src/main/java/graphdb/GraphDbServiceImpl.java
 * src/main/java/graphdb/Relationship.java
+
+#### 第6回「HBaseを使ってグラフDBを作ってみよう(中編)」
+
+* src/main/java/graphdb2/Filter.java
+* src/main/java/graphdb2/GraphDbService.java
+* src/main/java/graphdb2/GraphDbServiceImpl.java
+* src/main/java/graphdb2/Operator.java
+* src/main/java/graphdb2/Order.java
+* src/main/java/graphdb2/Sort.java
