@@ -19,7 +19,7 @@
 * src/main/java/graphdb/GraphDbServiceImpl.java
 * src/main/java/graphdb/Relationship.java
 
-#### 第6回「HBaseを使ってグラフDBを作ってみよう(中編)」
+#### [第6回「HBaseを使ってグラフDBを作ってみよう(中編)」](http://codezine.jp/article/detail/7486)
 
 * src/main/java/graphdb2/Filter.java
 * src/main/java/graphdb2/GraphDbService.java
