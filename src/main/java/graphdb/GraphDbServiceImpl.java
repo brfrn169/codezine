@@ -112,7 +112,7 @@ public class GraphDbServiceImpl implements GraphDbService {
       List<Put> indexPuts = new ArrayList<Put>();
 
       // リレーションシップの最新順インデックスのRowKeyを作成する
-      List<byte[]> indexRows = createNewOrderRelationshipIndexRows(startNodeId, type, endNodeId, createTimestamp);
+      List<byte[]> indexRows = createNewOrderIndexRows(startNodeId, type, endNodeId, createTimestamp);
 
       // Putオブジェクトの生成
       for (byte[] row : indexRows) {
@@ -124,7 +124,7 @@ public class GraphDbServiceImpl implements GraphDbService {
       // バッチ処理でPut
       table.batch(indexPuts);
     } catch (InterruptedException e) {
-      // 省略
+      throw new IOException(e);
     } finally {
       table.close();
     }
@@ -234,7 +234,7 @@ public class GraphDbServiceImpl implements GraphDbService {
       List<Delete> indexDelete = new ArrayList<Delete>();
 
       // リレーションシップの最新順インデックスのRowKeyを作成する
-      List<byte[]> indexRows = createNewOrderRelationshipIndexRows(startNodeId, type, endNodeId, deleteTimestamp);
+      List<byte[]> indexRows = createNewOrderIndexRows(startNodeId, type, endNodeId, deleteTimestamp);
 
       // Deleteオブジェクトの生成
       for (byte[] row : indexRows) {
@@ -245,7 +245,7 @@ public class GraphDbServiceImpl implements GraphDbService {
       // バッチ処理でDelete
       table.batch(indexDelete);
     } catch (InterruptedException e) {
-      // 省略
+      throw new IOException(e);
     } finally {
       table.close();
     }
@@ -314,10 +314,10 @@ public class GraphDbServiceImpl implements GraphDbService {
   // 隣接リレーションシップの取得(最新順)
   @Override public List<Relationship> select(String nodeId, String type, Direction direction, int length) throws IOException {
     // startRow
-    byte[] startRow = createNowOrderRelationshipIndexScanStartRow(nodeId, type, direction);
+    byte[] startRow = createNowOrderIndexScanStartRow(nodeId, type, direction);
 
     // startRowをインクリメントしたものをstopRowとする
-    byte[] stopRow = createNowOrderRelationshipIndexScanStartRow(nodeId, type, direction);
+    byte[] stopRow = createNowOrderIndexScanStartRow(nodeId, type, direction);
     incrementBytes(stopRow); // バイト配列をインクリメントする
 
     // Scanオブジェクトを生成する
@@ -340,12 +340,12 @@ public class GraphDbServiceImpl implements GraphDbService {
 
         switch (direction) {
         case INCOMING:
-          relationship.setStartNodeId(extractNodeIdFromNewOrderRelationshipIndexRow(result.getRow())); // RowKeyからノードIDを取得
+          relationship.setStartNodeId(extractNodeIdFromNewOrderIndexRow(result.getRow())); // RowKeyからノードIDを取得
           relationship.setEndNodeId(nodeId);
           break;
         case OUTGOING:
           relationship.setStartNodeId(nodeId);
-          relationship.setEndNodeId(extractNodeIdFromNewOrderRelationshipIndexRow(result.getRow())); // RowKeyからノードIDを取得
+          relationship.setEndNodeId(extractNodeIdFromNewOrderIndexRow(result.getRow())); // RowKeyからノードIDを取得
           break;
         default:
           throw new AssertionError();
@@ -513,7 +513,7 @@ public class GraphDbServiceImpl implements GraphDbService {
       List<Put> indexPut = new ArrayList<Put>();
 
       // リレーションシップの最新順インデックスのRowKeyを作成する
-      List<byte[]> indexRows = createNewOrderRelationshipIndexRows(startNodeId, type, endNodeId, createTimestamp);
+      List<byte[]> indexRows = createNewOrderIndexRows(startNodeId, type, endNodeId, createTimestamp);
 
       // Putオブジェクトの生成
       for (byte[] row : indexRows) {
@@ -525,14 +525,14 @@ public class GraphDbServiceImpl implements GraphDbService {
       // バッチ処理でPut
       table.batch(indexPut);
     } catch (InterruptedException e) {
-      // 省略
+      throw new IOException(e);
     } finally {
       table.close();
     }
   }
 
   // ノードのRowKeyの作成
-  private byte[] createNodeRow(String nodeId) {
+  protected byte[] createNodeRow(String nodeId) {
     byte[] nodeIdBytes = Bytes.toBytes(nodeId);
     ByteBuffer buffer = ByteBuffer.allocate(4 + 1 + 4 + nodeIdBytes.length); // int型 + byte型 + int型 + nodeIdのバイト配列
     buffer.putInt(nodeId.hashCode()) // hash
@@ -543,7 +543,7 @@ public class GraphDbServiceImpl implements GraphDbService {
   }
 
   // リレーションシップの最新順インデックスRowからノードIDを抽出する
-  private String extractNodeIdFromNewOrderRelationshipIndexRow(byte[] row) {
+  protected String extractNodeIdFromNewOrderIndexRow(byte[] row) {
     ByteBuffer buffer = ByteBuffer.wrap(row);
 
     byte[] bytes;
@@ -590,7 +590,7 @@ public class GraphDbServiceImpl implements GraphDbService {
   }
 
   // リレーションシップの最新順インデックスのRowKeyの作成
-  protected List<byte[]> createNewOrderRelationshipIndexRows(String startNodeId, String type, String endNodeId, long createTimestamp) {
+  protected List<byte[]> createNewOrderIndexRows(String startNodeId, String type, String endNodeId, long createTimestamp) {
     byte[] startNodeIdBytes = Bytes.toBytes(startNodeId);
     byte[] typeBytes = Bytes.toBytes(type);
     byte[] endNodeIdBytes = Bytes.toBytes(endNodeId);
@@ -644,7 +644,7 @@ public class GraphDbServiceImpl implements GraphDbService {
   }
 
   // リレーションシップの最新順インデックスRowをScanするためのstartRowを生成する。hash(nodeId)-2-nodeId-direction-type
-  protected byte[] createNowOrderRelationshipIndexScanStartRow(String nodeId, String type, Direction direction) {
+  protected byte[] createNowOrderIndexScanStartRow(String nodeId, String type, Direction direction) {
     byte[] nodeIdBytes = Bytes.toBytes(nodeId);
     byte[] typeBytes = Bytes.toBytes(type);
 

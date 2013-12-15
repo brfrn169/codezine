@@ -76,7 +76,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
       //
 
       // リレーションシップの最新順インデックスのRowKeyを作成する
-      List<byte[]> indexRows = createNewOrderRelationshipIndexRows(startNodeId, type, endNodeId, createTimestamp);
+      List<byte[]> indexRows = createNewOrderIndexRows(startNodeId, type, endNodeId, createTimestamp);
 
       // Putオブジェクトの生成
       for (byte[] row : indexRows) {
@@ -94,7 +94,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
         String propertyValue = entry.getValue();
 
         // リレーションシップのプロパティのセカンダリインデックスのRowKeyを作成する
-        List<byte[]> secondaryIndexRows = createRelationshipSecondaryIndexRows(startNodeId, type, endNodeId, propertyName, propertyValue,
+        List<byte[]> secondaryIndexRows = createSecondaryIndexRows(startNodeId, type, endNodeId, propertyName, propertyValue,
             createTimestamp);
 
         for (byte[] row : secondaryIndexRows) {
@@ -107,7 +107,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
       // バッチ処理で一括でPut
       table.batch(puts);
     } catch (InterruptedException e) {
-      // 省略
+      throw new IOException(e);
     } finally {
       table.close();
     }
@@ -182,7 +182,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
       //
 
       // リレーションシップの最新順インデックスのRowKeyを作成する
-      List<byte[]> indexRows = createNewOrderRelationshipIndexRows(startNodeId, type, endNodeId, deleteTimestamp);
+      List<byte[]> indexRows = createNewOrderIndexRows(startNodeId, type, endNodeId, deleteTimestamp);
 
       // Deleteオブジェクトの生成
       for (byte[] row : indexRows) {
@@ -199,7 +199,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
         String propertyValue = entry.getValue();
 
         // リレーションシップのプロパティのセカンダリインデックスのRowKeyを作成する
-        List<byte[]> secondaryIndexRows = createRelationshipSecondaryIndexRows(startNodeId, type, endNodeId, propertyName, propertyValue,
+        List<byte[]> secondaryIndexRows = createSecondaryIndexRows(startNodeId, type, endNodeId, propertyName, propertyValue,
             createTimestamp);
 
         for (byte[] row : secondaryIndexRows) {
@@ -211,7 +211,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
       // バッチ処理で一括でDelete
       table.batch(deletes);
     } catch (InterruptedException e) {
-      // 省略
+      throw new IOException(e);
     } finally {
       table.close();
     }
@@ -250,7 +250,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
       // Scanして結果を取得する
       List<Relationship> ret = new ArrayList<Relationship>();
       for (Result result : scanner) {
-        String id = extractNodeIdFromNewOrderRelationshipIndexRow(result.getRow());
+        String id = extractNodeIdFromSecondaryIndexRow(result.getRow());
         if (nodeIdSet.contains(id)) {
           // 既に結果に入っているノードIDはスキップする
           continue;
@@ -379,7 +379,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
       //
 
       // リレーションシップの最新順インデックスのRowKeyを作成する
-      List<byte[]> indexRows = createNewOrderRelationshipIndexRows(startNodeId, type, endNodeId, createTimestamp);
+      List<byte[]> indexRows = createNewOrderIndexRows(startNodeId, type, endNodeId, createTimestamp);
 
       // Putオブジェクトの生成
       for (byte[] row : indexRows) {
@@ -399,7 +399,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
           String propertyValue = entry.getValue();
 
           // PutするリレーションシップのプロパティのセカンダリインデックスのRowKeyを作成する
-          List<byte[]> putSecondaryIndexRows = createRelationshipSecondaryIndexRows(startNodeId, type, endNodeId, propertyName,
+          List<byte[]> putSecondaryIndexRows = createSecondaryIndexRows(startNodeId, type, endNodeId, propertyName,
               propertyValue, createTimestamp);
           for (byte[] row : putSecondaryIndexRows) {
             Put put = new Put(row, updateTimestamp); // Timestampには更新時間を指定
@@ -408,7 +408,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
           }
 
           // Deleteする古いリレーションシップのプロパティのセカンダリインデックスのRowKeyを作成する
-          List<byte[]> deleteSecondaryIndexRows = createRelationshipSecondaryIndexRows(startNodeId, type, endNodeId, propertyName,
+          List<byte[]> deleteSecondaryIndexRows = createSecondaryIndexRows(startNodeId, type, endNodeId, propertyName,
               lastProperties.get(propertyName), createTimestamp);
           for (byte[] row : deleteSecondaryIndexRows) {
             Delete delete = new Delete(row, updateTimestamp); // Timestampには更新時間を指定
@@ -422,7 +422,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
           // 各プロパティについて
 
           // Deleteする古いリレーションシップのプロパティのセカンダリインデックスのRowKeyを作成する
-          List<byte[]> deleteSecondaryIndexRows = createRelationshipSecondaryIndexRows(startNodeId, type, endNodeId, propertyName,
+          List<byte[]> deleteSecondaryIndexRows = createSecondaryIndexRows(startNodeId, type, endNodeId, propertyName,
               lastProperties.get(propertyName), createTimestamp);
           for (byte[] row : deleteSecondaryIndexRows) {
             Delete delete = new Delete(row, updateTimestamp); // Timestampには更新時間を指定
@@ -439,14 +439,14 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
         table.batch(deletes);
       }
     } catch (InterruptedException e) {
-      // 省略
+      throw new IOException(e);
     } finally {
       table.close();
     }
   }
 
   // リレーションシップのプロパティによるセカンダリインデックスのRowKeyの作成。方向(INCOMING,OUTGOING) × 順序(ASC,DESC)の4つ
-  private List<byte[]> createRelationshipSecondaryIndexRows(String startNodeId, String type, String endNodeId, String propertyName,
+  protected List<byte[]> createSecondaryIndexRows(String startNodeId, String type, String endNodeId, String propertyName,
       String propertyValue, long createTimestamp) {
     byte[] startNodeIdBytes = Bytes.toBytes(startNodeId);
     byte[] typeBytes = Bytes.toBytes(type);
@@ -577,7 +577,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
   }
 
   // セカンダリインデックスをScanするためのRowの作成
-  private byte[] createRelationshipSecondaryIndexScanRow(String nodeId, String type, Direction direction, String propertyName, Order order) {
+  private byte[] createSecondaryIndexScanRow(String nodeId, String type, Direction direction, String propertyName, Order order) {
     byte[] nodeIdBytes = Bytes.toBytes(nodeId);
     byte[] typeBytes = Bytes.toBytes(type);
     byte[] propertyNameBytes = Bytes.toBytes(propertyName);
@@ -604,7 +604,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
   }
 
   // セカンダリインデックスをScanするためのRowの作成
-  private byte[] createRelationshipSecondaryIndexScanRow(String nodeId, String type, Direction direction, String propertyName,
+  private byte[] createSecondaryIndexScanRow(String nodeId, String type, Direction direction, String propertyName,
       String propertyValue, Order order) {
     byte[] nodeIdBytes = Bytes.toBytes(nodeId);
     byte[] typeBytes = Bytes.toBytes(type);
@@ -642,7 +642,7 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
   }
 
   // FilterやSortの条件からScanを生成する
-  private Scan createSecondaryIndexScan(String nodeId, String type, Direction direction, String propertyName, Filter filter, Order order) {
+  protected Scan createSecondaryIndexScan(String nodeId, String type, Direction direction, String propertyName, Filter filter, Order order) {
     byte[] startRow;
     byte[] stopRow;
 
@@ -652,47 +652,47 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
       switch (filter.getOperator()) {
       case EQUAL:
         // EQUALの場合は、Sortに関わらずASCのセカンダリインデックスを使用する
-        startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC);
-        stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC));
+        startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC);
+        stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC));
         break;
 
       case GREATER:
         if (order == Order.ASC) {
-          startRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC));
-          stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC));
+          startRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC));
+          stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC));
         } else { // order == Order.DESC
-          startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC);
-          stopRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC);
+          startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC);
+          stopRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC);
         }
         break;
 
       case GREATER_OR_EQUAL:
         if (order == Order.ASC) {
-          startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC);
-          stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC));
+          startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC);
+          stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC));
         } else { // order == Order.DESC
-          startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC);
-          stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC));
+          startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC);
+          stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC));
         }
         break;
 
       case LESS:
         if (order == Order.ASC) {
-          startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC);
-          stopRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC);
+          startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC);
+          stopRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC);
         } else { // order == Order.DESC
-          startRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC));
-          stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC));
+          startRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC));
+          stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC));
         }
         break;
 
       case LESS_OR_EQUAL:
         if (order == Order.ASC) {
-          startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC);
-          stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC));
+          startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.ASC);
+          stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.ASC));
         } else { // order == Order.DESC
-          startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC);
-          stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC));
+          startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, value, Order.DESC);
+          stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, Order.DESC));
         }
         break;
 
@@ -700,14 +700,14 @@ public class GraphDbServiceImpl extends graphdb.GraphDbServiceImpl implements Gr
         throw new AssertionError();
       }
     } else {
-      startRow = createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, order);
-      stopRow = incrementBytes(createRelationshipSecondaryIndexScanRow(nodeId, type, direction, propertyName, order));
+      startRow = createSecondaryIndexScanRow(nodeId, type, direction, propertyName, order);
+      stopRow = incrementBytes(createSecondaryIndexScanRow(nodeId, type, direction, propertyName, order));
     }
     return new Scan(startRow, stopRow);
   }
 
   // セカンダリインデックスのRowからノードIDを抽出する
-  private String extractNodeIdFromNewOrderRelationshipIndexRow(byte[] row) {
+  protected String extractNodeIdFromSecondaryIndexRow(byte[] row) {
     ByteBuffer buffer = ByteBuffer.wrap(row);
 
     byte[] bytes;
